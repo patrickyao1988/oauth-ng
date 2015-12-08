@@ -92,6 +92,19 @@ accessTokenService.factory('IdToken', ['Storage', function(Storage){
       return verified;
     };
 
+    service.verifyIdTokenSignatureByX509 = function (idToken, x509String) {
+      var x509 = new X509();
+      x509.readCertPEM(x509String);
+      var idParts = idToken.match(/^([^.]+)\.([^.]+)\.([^.]+)$/);
+      var b64sig = null;
+      if (idParts[3].indexOf("-") > -1 || idParts[3].indexOf("_") > -1) { // Base64URL encoding
+        b64sig = idParts[3].replace(/[-]/g, '+').replace(/[_]/g, '/');
+      } else {
+        b64sig = idParts[3];
+      }
+      return x509.subjectPublicKeyRSA.verifyString(idParts[1]+'.'+idParts[2], b64tohex(b64sig));
+    };
+
     /**
      * Validates the information in the ID Token against configuration
      * @param {string} idtoken      The ID Token string
