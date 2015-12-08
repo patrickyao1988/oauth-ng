@@ -119,9 +119,11 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
     }
 
     //TODO: this is the hack to interact with WSO2's non standard implementation.
-    // Remove this when wall-e(wso2) has its 5.1.0 release
+    // Remove this block when wall-e(wso2) has its 5.1.0 release
     if (params.access_token && service.config.x509) {
       var request = new XMLHttpRequest();
+
+      //TODO need wall-e to have CORS enabled
       var wsoIdTokenRequest = service.config.site + '/idToken/TokenService?access_token=' + params.access_token;
       request.open('GET', wsoIdTokenRequest, false);
       request.send();

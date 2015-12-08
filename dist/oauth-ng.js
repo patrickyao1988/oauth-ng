@@ -1,4 +1,4 @@
-/* oauth-ng - v0.4.4 - 2015-12-06 */
+/* oauth-ng - v0.4.4 - 2015-12-08 */
 
 'use strict';
 
@@ -110,6 +110,19 @@ accessTokenService.factory('IdToken', ['Storage', function(Storage){
         throw new OidcException('Unsupported JWS signature algorithm ' + header.alg);
 
       return verified;
+    };
+
+    service.verifyIdTokenSignatureByX509 = function (idToken, x509String) {
+      var x509 = new X509();
+      x509.readCertPEM(x509String);
+      var idParts = idToken.match(/^([^.]+)\.([^.]+)\.([^.]+)$/);
+      var b64sig = null;
+      if (idParts[3].indexOf("-") > -1 || idParts[3].indexOf("_") > -1) { // Base64URL encoding
+        b64sig = idParts[3].replace(/[-]/g, '+').replace(/[_]/g, '/');
+      } else {
+        b64sig = idParts[3];
+      }
+      return x509.subjectPublicKeyRSA.verifyString(idParts[1]+'.'+idParts[2], b64tohex(b64sig));
     };
 
     /**
@@ -270,6 +283,7 @@ var accessTokenService = angular.module('oauth.accessToken', []);
 accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location', '$interval', 'IdToken', function(Storage, $rootScope, $location, $interval, IdToken){
 
   var service = {
+    config: null,
     token: null
   },
   hashFragmentKeys = [
@@ -292,7 +306,8 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
    * - takes the token from the fragment URI
    * - takes the token from the sessionStorage
    */
-  service.set = function(){
+  service.set = function(scope){
+    this.config = scope || {};
     this.setTokenFromString($location.hash());
 
     //If hash is present in URL always use it, cuz its coming from oAuth2 provider redirect
@@ -380,6 +395,29 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
     while ((m = regex.exec(hash)) !== null) {
       params[decodeURIComponent(m[1])] = decodeURIComponent(m[2]);
     }
+
+    //TODO: this is the hack to interact with WSO2's non standard implementation.
+    // Remove this block when wall-e(wso2) has its 5.1.0 release
+    if (params.access_token && service.config.x509) {
+      var request = new XMLHttpRequest();
+
+      //TODO need wall-e to have CORS enabled
+      var wsoIdTokenRequest = service.config.site + '/idToken/TokenService?access_token=' + params.access_token;
+      request.open('GET', wsoIdTokenRequest, false);
+      request.send();
+
+      //change the impl. of verifyIdTokenSig to use X509 certificate
+      IdToken.verifyIdTokenSig = function (idtoken) {
+        return IdToken.verifyIdTokenSignatureByX509(idtoken, service.config.x509);
+      };
+
+      if (request.status === 200) {
+        params.id_token = request.responseText;
+      } else {
+        params.error = 'Failed to fetch id_token'
+      }
+    }
+
 
     // OpenID Connect
     if (params.id_token) {
@@ -694,7 +732,8 @@ directives.directive('oauth', [
         nonce: '@',          // (optional) Send nonce on auth request
                              // OIDC(OpenID Connect) extras:
         issuer: '@',         // (required for OpenID Connect) issuer of the id_token, should match the 'iss' claim in id_token payload
-        jwks: '@'            // (required for OpenID Connect) json web key(s), it will be used to verify the id_token signature
+        jwks: '@',           // (required for OpenID Connect) json web key(s), it will be used to verify the id_token signature
+        x509: '@'            // if jwks is not set, the x509 cert(string representation) can be used to verify the id_token signature
       }
     };
 
