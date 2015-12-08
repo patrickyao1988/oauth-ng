@@ -33,7 +33,8 @@ directives.directive('oauth', [
         nonce: '@',          // (optional) Send nonce on auth request
                              // OIDC(OpenID Connect) extras:
         issuer: '@',         // (required for OpenID Connect) issuer of the id_token, should match the 'iss' claim in id_token payload
-        jwks: '@'            // (required for OpenID Connect) json web key(s), it will be used to verify the id_token signature
+        jwks: '@',           // (required for OpenID Connect) json web key(s), it will be used to verify the id_token signature
+        x509: '@'            // if jwks is not set, the x509 cert(string representation) can be used to verify the id_token signature
       }
     };
 
