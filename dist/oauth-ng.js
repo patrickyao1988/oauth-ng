@@ -1,4 +1,4 @@
-/* oauth-ng - v0.4.4 - 2015-12-08 */
+/* oauth-ng - v0.4.4 - 2015-12-10 */
 
 'use strict';
 
@@ -308,7 +308,18 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
    */
   service.set = function(scope){
     this.config = scope || {};
-    this.setTokenFromString($location.hash());
+    var hash = null;
+
+    if ($location.hash().indexOf('access_token') > -1) {
+      hash = $location.hash();
+    }
+
+    //In case we're using ui-router or other modules that can scramble the hash and path
+    if ($location.path().indexOf('access_token') > -1) {
+      hash = $location.path().substring(1);
+    }
+
+    this.setTokenFromString(hash);
 
     //If hash is present in URL always use it, cuz its coming from oAuth2 provider redirect
     if(null === service.token){
@@ -423,6 +434,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
     if (params.id_token) {
       try {
         if (IdToken.validateIdToken(params.id_token)) {
+          console.log('id_token validated!');
           IdToken.populateIdTokenClaims(params.id_token, params);
         } else {
           params.error = 'Failed to validate id_token';
@@ -683,8 +695,12 @@ interceptorService.factory('ExpiredInterceptor', ['Storage', '$rootScope', funct
   service.request = function(config) {
     var token = Storage.get('token');
 
-    if (token && expired(token)) {
-      $rootScope.$broadcast('oauth:expired', token);
+    if (token) {
+      if (expired(token)) {
+        $rootScope.$broadcast('oauth:expired', token);
+      } else { // TODO: Do we want to attach the token to every request ? or use the protected resource config ?
+        config.headers.Authorization = 'Bearer ' + token.access_token;
+      }
     }
 
     return config;
@@ -747,7 +763,9 @@ directives.directive('oauth', [
       var init = function() {
         initAttributes();          // sets defaults
         Storage.use(scope.storage);// set storage
-        compile();                 // compiles the desired layout
+        if (scope.template) {
+          compile();                 // compiles the desired layout
+        }
         Endpoint.set(scope);       // sets the oauth authorization url
         IdToken.set(scope);
         AccessToken.set(scope);    // sets the access token object (if existing, from fragment or session)
@@ -758,7 +776,7 @@ directives.directive('oauth', [
       var initAttributes = function() {
         scope.authorizePath = scope.authorizePath || '/oauth/authorize';
         scope.tokenPath     = scope.tokenPath     || '/oauth/token';
-        scope.template      = scope.template      || 'bower_components/oauth-ng/dist/views/templates/default.html';
+        scope.template      = scope.template      || undefined; // was default to 'bower_components/oauth-ng/dist/views/templates/default.html';
         scope.responseType  = scope.responseType  || 'token';
         scope.text          = scope.text          || 'Sign In';
         scope.state         = scope.state         || undefined;

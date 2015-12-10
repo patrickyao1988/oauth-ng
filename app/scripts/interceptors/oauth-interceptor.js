@@ -9,8 +9,12 @@ interceptorService.factory('ExpiredInterceptor', ['Storage', '$rootScope', funct
   service.request = function(config) {
     var token = Storage.get('token');
 
-    if (token && expired(token)) {
-      $rootScope.$broadcast('oauth:expired', token);
+    if (token) {
+      if (expired(token)) {
+        $rootScope.$broadcast('oauth:expired', token);
+      } else { // TODO: Do we want to attach the token to every request ? or use the protected resource config ?
+        config.headers.Authorization = 'Bearer ' + token.access_token;
+      }
     }
 
     return config;

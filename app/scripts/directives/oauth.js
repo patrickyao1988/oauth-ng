@@ -48,7 +48,9 @@ directives.directive('oauth', [
       var init = function() {
         initAttributes();          // sets defaults
         Storage.use(scope.storage);// set storage
-        compile();                 // compiles the desired layout
+        if (scope.template) {
+          compile();                 // compiles the desired layout
+        }
         Endpoint.set(scope);       // sets the oauth authorization url
         IdToken.set(scope);
         AccessToken.set(scope);    // sets the access token object (if existing, from fragment or session)
@@ -59,7 +61,7 @@ directives.directive('oauth', [
       var initAttributes = function() {
         scope.authorizePath = scope.authorizePath || '/oauth/authorize';
         scope.tokenPath     = scope.tokenPath     || '/oauth/token';
-        scope.template      = scope.template      || 'views/templates/default.html';
+        scope.template      = scope.template      || undefined; // was default to 'views/templates/default.html';
         scope.responseType  = scope.responseType  || 'token';
         scope.text          = scope.text          || 'Sign In';
         scope.state         = scope.state         || undefined;

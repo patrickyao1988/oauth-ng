@@ -30,7 +30,18 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
    */
   service.set = function(scope){
     this.config = scope || {};
-    this.setTokenFromString($location.hash());
+    var hash = null;
+
+    if ($location.hash().indexOf('access_token') > -1) {
+      hash = $location.hash();
+    }
+
+    //In case we're using ui-router or other modules that can scramble the hash and path
+    if ($location.path().indexOf('access_token') > -1) {
+      hash = $location.path().substring(1);
+    }
+
+    this.setTokenFromString(hash);
 
     //If hash is present in URL always use it, cuz its coming from oAuth2 provider redirect
     if(null === service.token){
@@ -145,6 +156,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
     if (params.id_token) {
       try {
         if (IdToken.validateIdToken(params.id_token)) {
+          console.log('id_token validated!');
           IdToken.populateIdTokenClaims(params.id_token, params);
         } else {
           params.error = 'Failed to validate id_token';
