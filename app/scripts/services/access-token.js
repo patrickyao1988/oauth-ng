@@ -56,6 +56,11 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
    * @returns {null}
    */
   service.destroy = function(){
+    //TODO find a better and comprehensive way of dealing with SLO(single logout)
+    if (this.config.revokePath) {
+      var params = 'clientID=' + encodeURIComponent(this.config.clientId) + '&accessToken=' + encodeURIComponent(this.token.access_token);
+      $http.get(this.config.site + this.config.revokePath + '?' + params);
+    }
     Storage.delete('token');
     this.token = null;
     if (this.config.logoutPath) {

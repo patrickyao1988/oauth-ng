@@ -28,6 +28,7 @@ directives.directive('oauth', [
         template: '@',      // (optional) template to render (e.g views/templates/default.html)
         text: '@',          // (optional) login text
         authorizePath: '@', // (optional) authorization url
+        revokePath: '@',    // (optional) revoke token path
         logoutPath: '@',    // (optional) logout path
         state: '@',         // (optional) An arbitrary unique string created by your app to guard against Cross-site Request Forgery
         storage: '@',        // (optional) Store token in 'sessionStorage' or 'localStorage', defaults to 'sessionStorage'
@@ -62,6 +63,7 @@ directives.directive('oauth', [
       var initAttributes = function() {
         scope.authorizePath = scope.authorizePath || '/oauth/authorize';
         scope.tokenPath     = scope.tokenPath     || '/oauth/token';
+        scope.revokePath    = scope.revokePath    || undefined;
         scope.logoutPath    = scope.logoutPath    || undefined;
         scope.template      = scope.template      || undefined; // was default to 'views/templates/default.html';
         scope.responseType  = scope.responseType  || 'token';
