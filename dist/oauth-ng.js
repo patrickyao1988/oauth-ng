@@ -1,4 +1,4 @@
-/* oauth-ng - v0.4.4 - 2015-12-10 */
+/* oauth-ng - v0.4.5 - 2015-12-21 */
 
 'use strict';
 
@@ -20,259 +20,275 @@ angular.module('oauth', [
 
 'use strict';
 
-var accessTokenService = angular.module('oauth.idToken', []);
+var idTokenService = angular.module('oauth.idToken', []);
 
-accessTokenService.factory('IdToken', ['Storage', function(Storage){
+idTokenService.factory('IdToken', ['Storage', function(Storage) {
 
-    var service = {
-      issuer: null,
-      clientId: null,
-      jwks: null
-    };
-    /**
-     * OidcException
-     * @param {string } message  - The exception error message
-     * @constructor
+  var service = {
+    issuer: null,
+    subject: null,
+    //clientId, should match 'aud' claim
+    clientId: null,
+    /*
+      The public key to verify the signature, supports:
+      1.RSA public key in PEM string: e.g. "-----BEGIN PUBLIC KEY..."
+      2.X509 certificate in PEM string: e.g. "-----BEGIN CERTIFICATE..."
+      3.JWK (Json Web Key): e.g. {kty: "RSA", n: "0vx7...", e: "AQAB"}
+
+      If not set, the id_token header should carry the key or the url to retrieve the key
      */
-    function OidcException(message) {
-      this.name = 'OidcException';
-      this.message = message;
+    pubKey: null
+  };
+  /**
+   * OidcException
+   * @param {string } message  - The exception error message
+   * @constructor
+   */
+  function OidcException(message) {
+    this.name = 'OidcException';
+    this.message = message;
+  }
+  OidcException.prototype = new Error();
+  OidcException.prototype.constructor = OidcException;
+
+  /**
+   * For initialization
+   * @param scope
+   */
+  service.set = function(scope) {
+    this.issuer = scope.issuer;
+    this.subject = scope.subject;
+    this.clientId = scope.clientId;
+    this.pubKey = scope.pubKey;
+  };
+
+  /**
+   * Validate id_token and access_token(if there's one)
+   * If validation passes, the id_token payload(claims) will be populated to 'params'
+   * Otherwise error will set to 'params' and tokens will be removed
+   *
+   * @param params
+   */
+  service.validateTokensAndPopulateClaims = function(params) {
+    var valid = false;
+    var message = '';
+    try {
+      valid = this.validateIdToken(params.id_token);
+      /*
+       if response_type is 'id_token token', then we will get both id_token and access_token,
+       access_token needs to be validated as well
+       */
+      if (valid && params.access_token) {
+        valid = this.validateAccessToken(params.id_token, params.access_token);
+      }
+    } catch (error) {
+      message = error.message;
     }
-    OidcException.prototype = new Error();
-    OidcException.prototype.constructor = OidcException;
 
-    /**
-     * For initialization
-     * @param scope
-     */
-    service.set = function(scope) {
-      this.issuer = scope.issuer;
-      this.clientId = scope.clientId;
-      this.jwks = scope.jwks;
-    };
+    if (valid) {
+      params.id_token_claims = getIdTokenPayload(params.id_token);
+    } else {
+      params.id_token = null;
+      params.access_token = null;
+      params.error = 'Failed to validate token:' + message;
+    }
+  };
 
-    /**
-     * Validates the id_token
-     * @param {String} idToken The id_token
-     * @returns {boolean} True if all the check passes, False otherwise
-     */
-    service.validateIdToken = function(idToken) {
-      return this.verifyIdTokenSig(idToken) && this.verifyIdTokenInfo(idToken);
-    };
 
-    /**
-     * Populate id token claims to map for future use
-     * @param idToken The id_token
-     * @param params  The target object for storing the claims
-     */
-    service.populateIdTokenClaims = function(idToken, params) {
-      params.id_token_claims = getIdTokenPayload(idToken);
-    };
+  /**
+   * Validates the id_token
+   * @param {String} idToken The id_token
+   * @returns {boolean} True if all the check passes, False otherwise
+   */
+  service.validateIdToken = function(idToken) {
+    return this.verifyIdTokenSig(idToken) && this.verifyIdTokenInfo(idToken);
+  };
 
-    /**
-     * Verifies the ID Token signature using the JWK Keyset from jwks
-     * Supports only RSA signatures ['RS256', 'RS384', 'RS512']
-     * @param {string}idtoken      The ID Token string
-     * @returns {boolean}          Indicates whether the signature is valid or not
-     * @throws {OidcException}
-     */
-    service.verifyIdTokenSig = function (idtoken) {
-      var verified = false;
-
-      if(!this.jwks) {
-        throw new OidcException('jwks(Json Web Keys) parameter not set');
+  /**
+   * Validate access_token based on the 'alg' and 'at_hash' value of the id_token header
+   * per spec: http://openid.net/specs/openid-connect-core-1_0.html#ImplicitTokenValidation
+   *
+   * @param idToken The id_token
+   * @param accessToken The access_token
+   * @returns {boolean} true if validation passes
+   */
+  service.validateAccessToken = function(idToken, accessToken) {
+    var header = getJsonObject(getIdTokenParts(idToken)[0]);
+    if (header.at_hash) {
+      var shalevel = header.alg.substr(2);
+      if (shalevel !== '256' && shalevel !== '384' && shalevel !== '512') {
+        throw new OidcException('Unsupported hash algorithm, expecting sha256, sha384, or sha512');
       }
+      var md = new KJUR.crypto.MessageDigest({'alg':'sha'+ shalevel, 'prov':'cryptojs'});
+      //hex representation of the hash
+      var hexStr = md.digestString(accessToken);
+      //take first 128bits and base64url encoding it
+      var expected = hextob64u(hexStr.substring(0, 32));
 
+      return expected === header.at_hash;
+    } else {
+      return true;
+    }
+  };
+
+  /**
+   * Verifies the ID Token signature using the specified public key
+   * The id_token header can optionally carry public key or the url to retrieve the public key
+   * Otherwise will use the public key configured using 'pubKey'
+   *
+   * Supports only RSA signatures ['RS256', 'RS384', 'RS512']
+   * @param {string}idToken      The ID Token string
+   * @returns {boolean}          Indicates whether the signature is valid or not
+   * @throws {OidcException}
+   */
+  service.verifyIdTokenSig = function (idToken) {
+
+    var idtParts = getIdTokenParts(idToken);
+    var header = getJsonObject(idtParts[0]);
+
+    if(!header.alg || header.alg.substr(0, 2) !== 'RS') {
+      throw new OidcException('Unsupported JWS signature algorithm ' + header.alg);
+    }
+
+    var matchedPubKey = null;
+
+    if (header.jwk) {
+      //Take the JWK if it comes with the id_token
+      matchedPubKey = header.jwk;
+      if (matchedPubKey.kid && header.kid && matchedPubKey.kid !== header.kid) {
+        throw new OidcException('Json Wek Key ID not match');
+      }
+      /*
+       TODO: Support for "jku" (JWK Set URL), "x5u" (X.509 URL), "x5c" (X.509 Certificate Chain) parameter to get key
+       per http://tools.ietf.org/html/draft-ietf-jose-json-web-signature-26#page-9
+       */
+    } else {
+      //Use configured public key
+      matchedPubKey = this.pubKey;
+    }
+
+    if(!matchedPubKey) {
+      throw new OidcException('No public key found to verify signature');
+    }
+
+    return rsaVerifyJWS(idToken, matchedPubKey, header.alg);
+  };
+
+  /**
+   * Validates the information in the ID Token against configuration
+   * @param {string} idtoken      The ID Token string
+   * @returns {boolean}           Validity of the ID Token
+   * @throws {OidcException}
+   */
+  service.verifyIdTokenInfo = function(idtoken) {
+    var valid = false;
+
+    if (idtoken) {
       var idtParts = getIdTokenParts(idtoken);
-      var header = getJsonObject(idtParts[0]);
-      var jwks = null;
+      var payload = getJsonObject(idtParts[1]);
+      if (payload) {
+        var now =  new Date() / 1000;
+        if (payload.iat > now + 60)
+          throw new OidcException('ID Token issued time is later than current time');
 
-      if(typeof this.jwks === 'string')
-        jwks = getJsonObject(this.jwks);
-      else if(typeof this.jwks === 'object')
-        jwks = this.jwks;
+        if (payload.exp < now )
+          throw new OidcException('ID Token expired');
 
-      if(header.alg && header.alg.substr(0, 2) == 'RS') {
-        var matchedPubKey = null;
-        if (jwks.keys) {
-          if (jwks.keys.length == 1) {
-            matchedPubKey = jwks.keys[0];
-          } else {
-            matchedPubKey = getMatchedKey(jwks.keys, 'RSA', 'sig', header.kid);
+        if (now < payload.ntb)
+          throw new OidcException('ID Token is invalid before '+ payload.ntb);
+
+        if (payload.iss && this.issuer && payload.iss !== this.issuer)
+          throw new OidcException('Invalid issuer ' + payload.iss + ' != ' + this.issuer);
+
+        if (payload.sub && this.subject && payload.sub !== this.subject)
+          throw new OidcException('Invalid subject ' + payload.sub + ' != ' + this.subject);
+
+        if (payload.aud) {
+          if (payload.aud instanceof Array && !KJUR.jws.JWS.inArray(this.clientId, payload.aud)) {
+            throw new OidcException('Client not in intended audience:' + payload.aud);
+          }
+          if (typeof payload.aud === 'string' && payload.aud !== this.clientId) {
+            throw new OidcException('Invalid audience ' + payload.aud + ' != ' + this.clientId);
           }
         }
-        if (!matchedPubKey) {
-          throw new OidcException('No matching JWK found');
-        } else {
-          verified = rsaVerifyJWS(idtoken, matchedPubKey, header.alg);
-        }
+
+        //TODO: nonce support ? probably need to redo current nonce support
+        //if(payload['nonce'] != sessionStorage['nonce'])
+        //  throw new OidcException('invalid nonce');
+        valid = true;
       } else
-        throw new OidcException('Unsupported JWS signature algorithm ' + header.alg);
+        throw new OidcException('Unable to parse JWS payload');
+    }
+    return valid;
+  };
 
-      return verified;
-    };
+  service.verifyIdTokenSignatureByX509 = function (idToken, x509String) {
+    var x509 = new X509();
+    x509.readCertPEM(x509String);
+    var idParts = idToken.match(/^([^.]+)\.([^.]+)\.([^.]+)$/);
+    var b64sig = null;
+    if (idParts[3].indexOf("-") > -1 || idParts[3].indexOf("_") > -1) { // Base64URL encoding
+      b64sig = idParts[3].replace(/[-]/g, '+').replace(/[_]/g, '/');
+    } else {
+      b64sig = idParts[3];
+    }
+    return x509.subjectPublicKeyRSA.verifyString(idParts[1]+'.'+idParts[2], b64tohex(b64sig));
+  };
 
-    service.verifyIdTokenSignatureByX509 = function (idToken, x509String) {
-      var x509 = new X509();
-      x509.readCertPEM(x509String);
-      var idParts = idToken.match(/^([^.]+)\.([^.]+)\.([^.]+)$/);
-      var b64sig = null;
-      if (idParts[3].indexOf("-") > -1 || idParts[3].indexOf("_") > -1) { // Base64URL encoding
-        b64sig = idParts[3].replace(/[-]/g, '+').replace(/[_]/g, '/');
-      } else {
-        b64sig = idParts[3];
-      }
-      return x509.subjectPublicKeyRSA.verifyString(idParts[1]+'.'+idParts[2], b64tohex(b64sig));
-    };
-
-    /**
-     * Validates the information in the ID Token against configuration
-     * @param {string} idtoken      The ID Token string
-     * @returns {boolean}           Validity of the ID Token
-     * @throws {OidcException}
+  /**
+   * Verifies the JWS string using the JWK
+   * @param {string} jws      The JWS string
+   * @param {object} pubKey   The public key that will be used to verify the signature
+   * @param {string} alg      The algorithm string. Expecting 'RS256', 'RS384', or 'RS512'
+   * @returns {boolean}       Validity of the JWS signature
+   * @throws {OidcException}
+   */
+  var rsaVerifyJWS = function (jws, pubKey, alg) {
+    /*
+      convert various public key format to RSAKey object
+      see @KEYUTIL.getKey for a full list of supported input format
      */
-    service.verifyIdTokenInfo = function(idtoken) {
-      var valid = false;
+    var rsaKey = KEYUTIL.getKey(pubKey);
 
-      if(idtoken) {
-        var idtParts = getIdTokenParts(idtoken);
-        var payload = getJsonObject(idtParts[1]);
-        if(payload) {
-          var now =  new Date() / 1000;
-          if( payload['iat'] >  now )
-            throw new OidcException('ID Token issued time is later than current time');
+    return KJUR.jws.JWS.verify(jws, rsaKey, [alg]);
+  };
 
-          if(payload['exp'] < now )
-            throw new OidcException('ID Token expired');
+  /**
+   * Splits the ID Token string into the individual JWS parts
+   * @param  {string} id_token  ID Token
+   * @returns {Array} An array of the JWS compact serialization components (header, payload, signature)
+   */
+  var getIdTokenParts = function (id_token) {
+    var jws = new KJUR.jws.JWS();
+    jws.parseJWS(id_token);
+    return [jws.parsedJWS.headS, jws.parsedJWS.payloadS, jws.parsedJWS.si];
+  };
 
-          var audience = null;
-          if(payload['aud']) {
-            if(payload['aud'] instanceof Array) {
-              audience = payload['aud'][0];
-            } else
-              audience = payload['aud'];
-          }
-          if(audience && audience != this.clientId)
-            throw new OidcException('invalid audience');
+  /**
+   * Get the contents of the ID Token payload as an JSON object
+   * @param {string} id_token     ID Token
+   * @returns {object}            The ID Token payload JSON object
+   */
+  var getIdTokenPayload = function (id_token) {
+    var parts = getIdTokenParts(id_token);
+    if(parts)
+      return getJsonObject(parts[1]);
+  };
 
-          if(payload['iss'] != this.issuer)
-            throw new OidcException('invalid issuer ' + payload['iss'] + ' != ' + this.issuer);
+  /**
+   * Get the JSON object from the JSON string
+   * @param {string} jsonS    JSON string
+   * @returns {object|null}   JSON object or null
+   */
+  var getJsonObject = function (jsonS) {
+    var jws = KJUR.jws.JWS;
+    if(jws.isSafeJSONString(jsonS)) {
+      return jws.readSafeJSONString(jsonS);
+    }
+    return null;
+  };
 
-          //TODO: nonce support ? probably need to redo current nonce support
-          //if(payload['nonce'] != sessionStorage['nonce'])
-          //  throw new OidcException('invalid nonce');
-          valid = true;
-        } else
-          throw new OidcException('Unable to parse JWS payload');
-      }
-      return valid;
-    };
-
-    /**
-     * Verifies the JWS string using the JWK
-     * @param {string} jws      The JWS string
-     * @param {object} jwk      The JWK Key that will be used to verify the signature
-     * @param {string} alg      The algorithm string. Expecting 'RS256', 'RS384', or 'RS512'
-     * @returns {boolean}       Validity of the JWS signature
-     * @throws {OidcException}
-     */
-    var rsaVerifyJWS = function (jws, jwk, alg) {
-      if(jws && typeof jwk === 'object') {
-        console.log("verifying token with algorithm ["+alg+"]");
-        return KJUR.jws.JWS.verify(jws, jwk, [alg]);
-      }
-      return false;
-    };
-
-    /**
-     * Splits the ID Token string into the individual JWS parts
-     * @param  {string} id_token  ID Token
-     * @returns {Array} An array of the JWS compact serialization components (header, payload, signature)
-     */
-    var getIdTokenParts = function (id_token) {
-      var jws = new KJUR.jws.JWS();
-      jws.parseJWS(id_token);
-      return [jws.parsedJWS.headS, jws.parsedJWS.payloadS, jws.parsedJWS.si];
-    };
-
-    /**
-     * Get the contents of the ID Token payload as an JSON object
-     * @param {string} id_token     ID Token
-     * @returns {object}            The ID Token payload JSON object
-     */
-    var getIdTokenPayload = function (id_token) {
-      var parts = getIdTokenParts(id_token);
-      if(parts)
-        return getJsonObject(parts[1]);
-    };
-
-    /**
-     * Get the JSON object from the JSON string
-     * @param {string} jsonS    JSON string
-     * @returns {object|null}   JSON object or null
-     */
-    var getJsonObject = function (jsonS) {
-      var jws = KJUR.jws.JWS;
-      if(jws.isSafeJSONString(jsonS)) {
-        return jws.readSafeJSONString(jsonS);
-      }
-      return null;
-    };
-
-    /**
-     * Retrieve the JWK key that matches the input criteria
-     * @param {array} keys               JWK Keyset
-     * @param {string} kty               The 'kty' to match (RSA|EC). Only RSA is supported.
-     * @param {string} use               The 'use' to match (sig|enc).
-     * @param {string} kid               The 'kid' to match
-     * @returns {object} jwk             The matched JWK
-     */
-    var getMatchedKey = function (keys, kty, use, kid) {
-      var foundKeys = [];
-
-      if (typeof keys === 'object' && keys.length > 0) {
-        for (var i = 0; i < keys.length; i++) {
-          if (keys[i]['kty'] == kty)
-            foundKeys.push(keys[i]);
-        }
-
-        if (foundKeys.length == 0)
-          return null;
-
-        if (use) {
-          var temp = [];
-          for (var j = 0; j < foundKeys.length; j++) {
-            if (!foundKeys[j]['use'])
-              temp.push(foundKeys[j]);
-            else if (foundKeys[j]['use'] == use)
-              temp.push(foundKeys[j]);
-          }
-          foundKeys = temp;
-        }
-        if (foundKeys.length == 0)
-          return null;
-
-        if (kid) {
-          temp = [];
-          for (var k = 0; k < foundKeys.length; k++) {
-            if (foundKeys[k]['kid'] == kid)
-              temp.push(foundKeys[k]);
-          }
-          foundKeys = temp;
-        }
-        if (foundKeys.length == 0)
-          return null;
-        else
-          return foundKeys[0];
-      } else {
-        return null;
-      }
-
-    };
-
-
-
-    return service;
+  return service;
 
 }]);
 
@@ -310,13 +326,12 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
     this.config = scope || {};
     var hash = null;
 
-    if ($location.hash().indexOf('access_token') > -1) {
-      hash = $location.hash();
-    }
-
     //In case we're using ui-router or other modules that can scramble the hash and path
     if ($location.path().indexOf('access_token') > -1) {
       hash = $location.path().substring(1);
+    }
+    if (!hash) {
+      hash = $location.hash()
     }
 
     this.setTokenFromString(hash);
@@ -409,7 +424,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
 
     //TODO: this is the hack to interact with WSO2's non standard implementation.
     // Remove this block when wall-e(wso2) has its 5.1.0 release
-    if (params.access_token && service.config.x509) {
+    if (params.access_token && service.config.pubKey) {
       var request = new XMLHttpRequest();
 
       //TODO need wall-e to have CORS enabled
@@ -419,7 +434,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
 
       //change the impl. of verifyIdTokenSig to use X509 certificate
       IdToken.verifyIdTokenSig = function (idtoken) {
-        return IdToken.verifyIdTokenSignatureByX509(idtoken, service.config.x509);
+        return IdToken.verifyIdTokenSignatureByX509(idtoken, service.config.pubKey);
       };
 
       if (request.status === 200) {
@@ -429,19 +444,9 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
       }
     }
 
-
     // OpenID Connect
-    if (params.id_token) {
-      try {
-        if (IdToken.validateIdToken(params.id_token)) {
-          console.log('id_token validated!');
-          IdToken.populateIdTokenClaims(params.id_token, params);
-        } else {
-          params.error = 'Failed to validate id_token';
-        }
-      } catch (error) {
-        params.error = 'Failed to validate id_token: ' + error.message;
-      }
+    if (params.id_token && !params.error) {
+      IdToken.validateTokensAndPopulateClaims(params);
       return params;
     }
 
@@ -746,10 +751,10 @@ directives.directive('oauth', [
         state: '@',         // (optional) An arbitrary unique string created by your app to guard against Cross-site Request Forgery
         storage: '@',        // (optional) Store token in 'sessionStorage' or 'localStorage', defaults to 'sessionStorage'
         nonce: '@',          // (optional) Send nonce on auth request
-                             // OIDC(OpenID Connect) extras:
-        issuer: '@',         // (required for OpenID Connect) issuer of the id_token, should match the 'iss' claim in id_token payload
-        jwks: '@',           // (required for OpenID Connect) json web key(s), it will be used to verify the id_token signature
-        x509: '@'            // if jwks is not set, the x509 cert(string representation) can be used to verify the id_token signature
+                             // OpenID Connect extras, more details in id-token.js:
+        issuer: '@',         // (optional for OpenID Connect) issuer of the id_token, should match the 'iss' claim in id_token payload
+        subject: '@',        // (optional for OpenID Connect) subject of the id_token, should match the 'sub' claim in id_token payload
+        pubKey: '@'          // (optional for OpenID Connect) the public key(RSA public key or X509 certificate in PEM format) to verify the signature
       }
     };
 

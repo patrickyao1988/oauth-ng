@@ -32,13 +32,12 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
     this.config = scope || {};
     var hash = null;
 
-    if ($location.hash().indexOf('access_token') > -1) {
-      hash = $location.hash();
-    }
-
     //In case we're using ui-router or other modules that can scramble the hash and path
     if ($location.path().indexOf('access_token') > -1) {
       hash = $location.path().substring(1);
+    }
+    if (!hash) {
+      hash = $location.hash()
     }
 
     this.setTokenFromString(hash);
@@ -131,7 +130,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
 
     //TODO: this is the hack to interact with WSO2's non standard implementation.
     // Remove this block when wall-e(wso2) has its 5.1.0 release
-    if (params.access_token && service.config.x509) {
+    if (params.access_token && service.config.pubKey) {
       var request = new XMLHttpRequest();
 
       //TODO need wall-e to have CORS enabled
@@ -141,7 +140,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
 
       //change the impl. of verifyIdTokenSig to use X509 certificate
       IdToken.verifyIdTokenSig = function (idtoken) {
-        return IdToken.verifyIdTokenSignatureByX509(idtoken, service.config.x509);
+        return IdToken.verifyIdTokenSignatureByX509(idtoken, service.config.pubKey);
       };
 
       if (request.status === 200) {
@@ -151,19 +150,9 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
       }
     }
 
-
     // OpenID Connect
-    if (params.id_token) {
-      try {
-        if (IdToken.validateIdToken(params.id_token)) {
-          console.log('id_token validated!');
-          IdToken.populateIdTokenClaims(params.id_token, params);
-        } else {
-          params.error = 'Failed to validate id_token';
-        }
-      } catch (error) {
-        params.error = 'Failed to validate id_token: ' + error.message;
-      }
+    if (params.id_token && !params.error) {
+      IdToken.validateTokensAndPopulateClaims(params);
       return params;
     }
 

@@ -31,10 +31,10 @@ directives.directive('oauth', [
         state: '@',         // (optional) An arbitrary unique string created by your app to guard against Cross-site Request Forgery
         storage: '@',        // (optional) Store token in 'sessionStorage' or 'localStorage', defaults to 'sessionStorage'
         nonce: '@',          // (optional) Send nonce on auth request
-                             // OIDC(OpenID Connect) extras:
-        issuer: '@',         // (required for OpenID Connect) issuer of the id_token, should match the 'iss' claim in id_token payload
-        jwks: '@',           // (required for OpenID Connect) json web key(s), it will be used to verify the id_token signature
-        x509: '@'            // if jwks is not set, the x509 cert(string representation) can be used to verify the id_token signature
+                             // OpenID Connect extras, more details in id-token.js:
+        issuer: '@',         // (optional for OpenID Connect) issuer of the id_token, should match the 'iss' claim in id_token payload
+        subject: '@',        // (optional for OpenID Connect) subject of the id_token, should match the 'sub' claim in id_token payload
+        pubKey: '@'          // (optional for OpenID Connect) the public key(RSA public key or X509 certificate in PEM format) to verify the signature
       }
     };
 
