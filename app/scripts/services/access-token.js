@@ -2,7 +2,8 @@
 
 var accessTokenService = angular.module('oauth.accessToken', []);
 
-accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location', '$interval', 'IdToken', function(Storage, $rootScope, $location, $interval, IdToken){
+accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location', '$interval', '$http', 'IdToken',
+  function(Storage, $rootScope, $location, $interval, $http, IdToken){
 
   var service = {
     config: null,
@@ -57,6 +58,10 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
   service.destroy = function(){
     Storage.delete('token');
     this.token = null;
+    if (this.config.logoutPath) {
+      //TODO what if it fails ? maybe redirect user to idP site ?
+      $http.get(this.config.site + this.config.logoutPath);
+    }
     return this.token;
   };
 

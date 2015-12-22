@@ -296,7 +296,8 @@ idTokenService.factory('IdToken', ['Storage', function(Storage) {
 
 var accessTokenService = angular.module('oauth.accessToken', []);
 
-accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location', '$interval', 'IdToken', function(Storage, $rootScope, $location, $interval, IdToken){
+accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location', '$interval', '$http', 'IdToken',
+  function(Storage, $rootScope, $location, $interval, $http, IdToken){
 
   var service = {
     config: null,
@@ -351,6 +352,10 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
   service.destroy = function(){
     Storage.delete('token');
     this.token = null;
+    if (this.config.logoutPath) {
+      //TODO what if it fails ? maybe redirect user to idP site ?
+      $http.get(this.config.site + this.config.logoutPath);
+    }
     return this.token;
   };
 
@@ -748,6 +753,7 @@ directives.directive('oauth', [
         template: '@',      // (optional) template to render (e.g bower_components/oauth-ng/dist/views/templates/default.html)
         text: '@',          // (optional) login text
         authorizePath: '@', // (optional) authorization url
+        logoutPath: '@',    // (optional) logout path
         state: '@',         // (optional) An arbitrary unique string created by your app to guard against Cross-site Request Forgery
         storage: '@',        // (optional) Store token in 'sessionStorage' or 'localStorage', defaults to 'sessionStorage'
         nonce: '@',          // (optional) Send nonce on auth request
@@ -781,6 +787,7 @@ directives.directive('oauth', [
       var initAttributes = function() {
         scope.authorizePath = scope.authorizePath || '/oauth/authorize';
         scope.tokenPath     = scope.tokenPath     || '/oauth/token';
+        scope.logoutPath    = scope.logoutPath    || undefined;
         scope.template      = scope.template      || undefined; // was default to 'bower_components/oauth-ng/dist/views/templates/default.html';
         scope.responseType  = scope.responseType  || 'token';
         scope.text          = scope.text          || 'Sign In';
