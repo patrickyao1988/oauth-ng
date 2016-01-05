@@ -59,15 +59,15 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
     //TODO find a better and comprehensive way of dealing with SLO(single logout)
     if (this.config.revokePath) {
       var params = 'clientID=' + encodeURIComponent(this.config.clientId) + '&accessToken=' + encodeURIComponent(this.token.access_token);
-      $http.get(this.config.site + this.config.revokePath + '?' + params);
+      //TODO circular dependency injection of $http ?
+      $http.get(this.config.tokenServiceSite + this.config.revokePath + '?' + params);
     }
     Storage.delete('token');
     this.token = null;
     if (this.config.logoutPath) {
-      //TODO what if it fails ? maybe redirect user to idP site ?
-      $http.get(this.config.site + this.config.logoutPath);
+      window.location.replace(this.config.site + this.config.logoutPath);
     }
-    return this.token;
+    return null;
   };
 
   /**
@@ -143,8 +143,8 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
     if (params.access_token && service.config.pubKey) {
       var request = new XMLHttpRequest();
 
-      //TODO need wall-e to have CORS enabled
-      var wsoIdTokenRequest = service.config.site + '/idToken/TokenService?access_token=' + params.access_token;
+      //note wall-e should have CORS enabled
+      var wsoIdTokenRequest = service.config.tokenServiceSite + '/idToken/TokenService?access_token=' + params.access_token;
       request.open('GET', wsoIdTokenRequest, false);
       request.send();
 

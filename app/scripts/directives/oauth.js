@@ -20,6 +20,7 @@ directives.directive('oauth', [
       replace: true,
       scope: {
         site: '@',          // (required) set the oauth server host (e.g. http://oauth.example.com)
+        tokenServiceSite:'@',//(required) token service (get id_token, revoke token etc.) host
         clientId: '@',      // (required) client id
         redirectUri: '@',   // (required) client redirect uri
         responseType: '@',  // (optional) response type, defaults to token (use 'token' for implicit flow and 'code' for authorization code flow
