@@ -60,7 +60,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
     if (this.config.revokePath) {
       var params = 'clientID=' + encodeURIComponent(this.config.clientId) + '&accessToken=' + encodeURIComponent(this.token.access_token);
       //TODO circular dependency injection of $http ?
-      $http.get(this.config.tokenServiceSite + this.config.revokePath + '?' + params);
+      $http.post(this.config.tokenServiceSite + this.config.revokePath, params, {headers: { 'Content-Type': 'application/x-www-form-urlencoded'}});
     }
     Storage.delete('token');
     this.token = null;
