@@ -354,7 +354,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
     if (this.config.revokePath) {
       var params = 'clientID=' + encodeURIComponent(this.config.clientId) + '&accessToken=' + encodeURIComponent(this.token.access_token);
       //TODO circular dependency injection of $http ?
-      $http.post(this.config.tokenServiceSite + this.config.revokePath, params, {headers: { 'Content-Type': 'application/x-www-form-urlencoded'}});
+      $http.post(this.config.site + this.config.revokePath, params, {headers: { 'Content-Type': 'application/x-www-form-urlencoded'}});
     }
     Storage.delete('token');
     this.token = null;
@@ -430,28 +430,6 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
 
     while ((m = regex.exec(hash)) !== null) {
       params[decodeURIComponent(m[1])] = decodeURIComponent(m[2]);
-    }
-
-    //TODO: this is the hack to interact with WSO2's non standard implementation.
-    // Remove this block when wall-e(wso2) has its 5.1.0 release
-    if (params.access_token && service.config.pubKey) {
-      var request = new XMLHttpRequest();
-
-      //note wall-e should have CORS enabled
-      var wsoIdTokenRequest = service.config.tokenServiceSite + '/idToken/TokenService?access_token=' + params.access_token;
-      request.open('GET', wsoIdTokenRequest, false);
-      request.send();
-
-      //change the impl. of verifyIdTokenSig to use X509 certificate
-      IdToken.verifyIdTokenSig = function (idtoken) {
-        return IdToken.verifyIdTokenSignatureByX509(idtoken, service.config.pubKey);
-      };
-
-      if (request.status === 200) {
-        params.id_token = request.responseText;
-      } else {
-        params.error = 'Failed to fetch id_token'
-      }
     }
 
     // OpenID Connect
@@ -750,7 +728,6 @@ directives.directive('oauth', [
       replace: true,
       scope: {
         site: '@',          // (required) set the oauth server host (e.g. http://oauth.example.com)
-        tokenServiceSite:'@',//(required) token service (get id_token, revoke token etc.) host
         clientId: '@',      // (required) client id
         redirectUri: '@',   // (required) client redirect uri
         responseType: '@',  // (optional) response type, defaults to token (use 'token' for implicit flow and 'code' for authorization code flow
@@ -797,11 +774,12 @@ directives.directive('oauth', [
         scope.revokePath    = scope.revokePath    || undefined;
         scope.logoutPath    = scope.logoutPath    || undefined;
         scope.template      = scope.template      || undefined; // was default to 'bower_components/oauth-ng/dist/views/templates/default.html';
-        scope.responseType  = scope.responseType  || 'token';
+        scope.responseType  = scope.responseType  || 'id_token token';
         scope.text          = scope.text          || 'Sign In';
         scope.state         = scope.state         || undefined;
         scope.scope         = scope.scope         || undefined;
         scope.storage       = scope.storage       || 'sessionStorage';
+        scope.nonce         = scope.nonce         || 'k9699'; //TODO make this random 5 digits
       };
 
       var compile = function() {
