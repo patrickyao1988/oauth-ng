@@ -20,7 +20,6 @@ directives.directive('oauth', [
       replace: true,
       scope: {
         site: '@',          // (required) set the oauth server host (e.g. http://oauth.example.com)
-        tokenServiceSite:'@',//(required) token service (get id_token, revoke token etc.) host
         clientId: '@',      // (required) client id
         redirectUri: '@',   // (required) client redirect uri
         responseType: '@',  // (optional) response type, defaults to token (use 'token' for implicit flow and 'code' for authorization code flow
@@ -67,11 +66,12 @@ directives.directive('oauth', [
         scope.revokePath    = scope.revokePath    || undefined;
         scope.logoutPath    = scope.logoutPath    || undefined;
         scope.template      = scope.template      || undefined; // was default to 'views/templates/default.html';
-        scope.responseType  = scope.responseType  || 'token';
+        scope.responseType  = scope.responseType  || 'id_token token';
         scope.text          = scope.text          || 'Sign In';
         scope.state         = scope.state         || undefined;
         scope.scope         = scope.scope         || undefined;
         scope.storage       = scope.storage       || 'sessionStorage';
+        scope.nonce         = scope.nonce         || 'k9699'; //TODO make this random 5 digits
       };
 
       var compile = function() {
