@@ -59,14 +59,20 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
     //TODO find a better and comprehensive way of dealing with SLO(single logout)
     if (this.config.revokePath) {
       var params = 'clientID=' + encodeURIComponent(this.config.clientId) + '&accessToken=' + encodeURIComponent(this.token.access_token);
+      var auth = this;
       //TODO circular dependency injection of $http ?
-      $http.post(this.config.site + this.config.revokePath, params, {headers: { 'Content-Type': 'application/x-www-form-urlencoded'}});
+      $http.post(auth.config.site + auth.config.revokePath, params, {headers: { 'Content-Type': 'application/x-www-form-urlencoded'}})
+          .success(function(status){
+            if (auth.config.logoutPath) {
+              window.location.replace(auth.config.site + auth.config.logoutPath);
+            }
+          }).error(function(data){
+            console.log(data);
+          });
     }
+
     Storage.delete('token');
-    this.token = null;
-    if (this.config.logoutPath) {
-      window.location.replace(this.config.site + this.config.logoutPath);
-    }
+    auth.token = null;
     return null;
   };
 
