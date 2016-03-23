@@ -57,7 +57,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
    */
   service.destroy = function(){
     //TODO find a better and comprehensive way of dealing with SLO(single logout)
-    if (this.config.revokePath) {
+    if (this.config && this.config.revokePath) {
       var params = 'clientID=' + encodeURIComponent(this.config.clientId) + '&accessToken=' + encodeURIComponent(this.token.access_token);
       var auth = this;
       //TODO circular dependency injection of $http ?
@@ -72,7 +72,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
     }
 
     Storage.delete('token');
-    auth.token = null;
+    this.token = null;
     return null;
   };
 
