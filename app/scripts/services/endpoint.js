@@ -2,7 +2,7 @@
 
 var endpointClient = angular.module('oauth.endpoint', []);
 
-endpointClient.factory('Endpoint', function() {
+endpointClient.factory('Endpoint', ['Storage', function(Storage) {
 
   var service = {};
 
@@ -46,9 +46,40 @@ endpointClient.factory('Endpoint', function() {
    */
 
   service.redirect = function( overrides ) {
+    overrides = overrides || {};
+    if (this.config.nonce) {
+      var nonce = generateNonce();
+      Storage.set('nonce', nonce);
+      overrides.nonce = nonce;
+    }
     var targetLocation = this.get( overrides );
     window.location.replace(targetLocation);
   };
 
+
+  var generateNonce = function() {
+    var crypto = window.crypto || window.msCrypto;
+    //crypto.getRandomValues should be well supported nowadays, based on http://caniuse.com/#feat=getrandomvalues
+    if (crypto && crypto.getRandomValues) {
+      var array = new Uint32Array(1);
+      crypto.getRandomValues(array);
+      return array[0].toString(36);
+    } else {
+      var byteArrayToLong = function(byteArray) {
+        var value = 0;
+        for (var i = byteArray.length - 1; i >= 0; i--) {
+          value = (value * 256) + byteArray[i];
+        }
+        return value;
+      };
+      var randArray= new Array(4);
+
+      rng_seed_time();
+      new SecureRandom().nextBytes(randArray);
+      return byteArrayToLong(randArray).toString(36);
+    }
+  };
+
+
   return service;
-});
+}]);

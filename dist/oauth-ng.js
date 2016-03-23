@@ -1,4 +1,4 @@
-/* oauth-ng - v0.4.5 - 2016-03-18 */
+/* oauth-ng - v0.4.5 - 2016-03-23 */
 
 'use strict';
 
@@ -212,9 +212,11 @@ idTokenService.factory('IdToken', ['Storage', function(Storage) {
           }
         }
 
-        //TODO: nonce support ? probably need to redo current nonce support
-        //if(payload['nonce'] != sessionStorage['nonce'])
-        //  throw new OidcException('invalid nonce');
+        var expectedNonce = Storage.get('nonce');
+        Storage.delete('nonce'); //Delete existing nonce, it's one time use only
+        if (payload.nonce !== expectedNonce)
+          throw new OidcException('invalid nonce');
+
         valid = true;
       } else
         throw new OidcException('Unable to parse JWS payload');
@@ -512,7 +514,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
 
 var endpointClient = angular.module('oauth.endpoint', []);
 
-endpointClient.factory('Endpoint', function() {
+endpointClient.factory('Endpoint', ['Storage', function(Storage) {
 
   var service = {};
 
@@ -556,12 +558,43 @@ endpointClient.factory('Endpoint', function() {
    */
 
   service.redirect = function( overrides ) {
+    overrides = overrides || {};
+    if (this.config.nonce) {
+      var nonce = generateNonce();
+      Storage.set('nonce', nonce);
+      overrides.nonce = nonce;
+    }
     var targetLocation = this.get( overrides );
     window.location.replace(targetLocation);
   };
 
+
+  var generateNonce = function() {
+    var crypto = window.crypto || window.msCrypto;
+    //crypto.getRandomValues should be well supported nowadays, based on http://caniuse.com/#feat=getrandomvalues
+    if (crypto && crypto.getRandomValues) {
+      var array = new Uint32Array(1);
+      crypto.getRandomValues(array);
+      return array[0].toString(36);
+    } else {
+      var byteArrayToLong = function(byteArray) {
+        var value = 0;
+        for (var i = byteArray.length - 1; i >= 0; i--) {
+          value = (value * 256) + byteArray[i];
+        }
+        return value;
+      };
+      var randArray= new Array(4);
+
+      rng_seed_time();
+      new SecureRandom().nextBytes(randArray);
+      return byteArrayToLong(randArray).toString(36);
+    }
+  };
+
+
   return service;
-});
+}]);
 
 'use strict';
 
@@ -785,7 +818,7 @@ directives.directive('oauth', [
         scope.state         = scope.state         || undefined;
         scope.scope         = scope.scope         || undefined;
         scope.storage       = scope.storage       || 'sessionStorage';
-        scope.nonce         = scope.nonce         || 'k9699'; //TODO make this random 5 digits
+        scope.nonce         = scope.nonce         || true; //use nonce or not. If true(by default) then random nonce generation and validation will be taken care by oauth-ng
       };
 
       var compile = function() {

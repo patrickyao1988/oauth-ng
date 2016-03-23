@@ -71,7 +71,7 @@ directives.directive('oauth', [
         scope.state         = scope.state         || undefined;
         scope.scope         = scope.scope         || undefined;
         scope.storage       = scope.storage       || 'sessionStorage';
-        scope.nonce         = scope.nonce         || 'k9699'; //TODO make this random 5 digits
+        scope.nonce         = scope.nonce         || true; //use nonce or not. If true(by default) then random nonce generation and validation will be taken care by oauth-ng
       };
 
       var compile = function() {
