@@ -224,19 +224,6 @@ idTokenService.factory('IdToken', ['Storage', function(Storage) {
     return valid;
   };
 
-  service.verifyIdTokenSignatureByX509 = function (idToken, x509String) {
-    var x509 = new X509();
-    x509.readCertPEM(x509String);
-    var idParts = idToken.match(/^([^.]+)\.([^.]+)\.([^.]+)$/);
-    var b64sig = null;
-    if (idParts[3].indexOf("-") > -1 || idParts[3].indexOf("_") > -1) { // Base64URL encoding
-      b64sig = idParts[3].replace(/[-]/g, '+').replace(/[_]/g, '/');
-    } else {
-      b64sig = idParts[3];
-    }
-    return x509.subjectPublicKeyRSA.verifyString(idParts[1]+'.'+idParts[2], b64tohex(b64sig));
-  };
-
   /**
    * Verifies the JWS string using the JWK
    * @param {string} jws      The JWS string
@@ -684,12 +671,12 @@ var oauthConfigurationService = angular.module('oauth.configuration', []);
 
 oauthConfigurationService.provider('OAuthConfiguration', function() {
 	var _config = {};
-	
+
 	this.init = function(config, httpProvider) {
 		_config.protectedResources = config.protectedResources || [];
 		httpProvider.interceptors.push('AuthInterceptor');
 	};
-	
+
 	this.$get = function() {
 		return {
 			getConfig: function() {
@@ -698,24 +685,25 @@ oauthConfigurationService.provider('OAuthConfiguration', function() {
 		};
 	};
 })
-.factory('AuthInterceptor', ['OAuthConfiguration', 'AccessToken', function(OAuthConfiguration, AccessToken) {
+.factory('AuthInterceptor', ['OAuthConfiguration', 'Storage', function(OAuthConfiguration, Storage) {
 	return {
 		'request': function(config) {
 			OAuthConfiguration.getConfig().protectedResources.forEach(function(resource) {
 				// If the url is one of the protected resources, we want to see if there's a token and then
 				// add the token if it exists.
 				if (config.url.indexOf(resource) > -1) {
-					var token = AccessToken.get();
+					var token = Storage.get('token');
 					if (token) {
 						config.headers.Authorization = 'Bearer ' + token.access_token;
 					}
 				}
 			});
-			
+
 			return config;
 		}
 	};
 }]);
+
 'use strict';
 
 var interceptorService = angular.module('oauth.interceptor', []);
