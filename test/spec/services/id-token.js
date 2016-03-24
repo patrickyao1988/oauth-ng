@@ -223,42 +223,4 @@ describe('IdToken', function() {
     });
   });
 
-  describe('WSO2 RSAwithSHA256 testing', function () {
-
-      it('should verify the signature', function () {
-        var wsoIdToken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJTSEEyNTZ3aXRoUlNBIiwieDV0IjoiTkdVMk1EZGpNV1k1WXpSaU1tVXlZamRtTXprelpHTXlORFV3TVRVMk5Ua3pPREF3TnpBd1pRIn0" +
-            ".eyJpc3MiOiJodHRwOi8vd3NvMi5vcmcvZ2F0ZXdheSIsImV4cCI6MTQ0OTE5ODE2MTUwMSwiaHR0cDovL3dzbzIub3JnL2dhdGV3YXkvc3Vic2NyaWJlciI6ImFkbWluIiwiaHR0cDovL3dzbzIub3JnL2dhdGV3YXkvYXBwbGljYXRpb25uYW1lIjoiY2FyZSIsImh0dHA6Ly93c28yLm9yZy9nYXRld2F5L2VuZHVzZXIiOiJhZG1pbkBjYXJlLmNvbSIsICJodHRwOi8vd3NvMi5vcmcvY2xhaW1zL2VtYWlsYWRkcmVzcyI6ImFkbWluQGNhcmUuY29tIiwgImh0dHA6Ly93c28yLm9yZy9jbGFpbXMvZ2l2ZW5uYW1lIjoiYWRtaW4iLCAiaHR0cDovL3dzbzIub3JnL2NsYWltcy9sYXN0bmFtZSI6ImFkbWluIiwgImh0dHA6Ly93c28yLm9yZy9jbGFpbXMvcm9sZSI6ImFkbWluLEludGVybmFsL2NhcmUsSW50ZXJuYWwvYWRtaW5fRGVmYXVsdEFwcGxpY2F0aW9uX1BST0RVQ1RJT04sSW50ZXJuYWwvYWRtaW5fQ2FyZV9QUk9EVUNUSU9OLEludGVybmFsL2V2ZXJ5b25lIn0" +
-            ".dSTrkA4tQ53iP-q7bd77Es21d-OsqG0uWqYp02yGlnHVBPJfwTi9qW4NitjH260WWIGnOwGKYiiuE2Zw6YZ_zxc_DJiIf3UczQT7tFfLvusQL69b1szppSwHTFuTMojx9lF_tNEnl0f-lLW3IRDTK9I_4NGlJbXTgx-bkAiLZKo";
-
-        var pem = "-----BEGIN CERTIFICATE-----\n"
-            + "MIICBTCCAW6gAwIBAgIEaq8KvDANBgkqhkiG9w0BAQQFADBHMREwDwYDVQQDEwhj\n"
-            + "YXJlLmNvbTENMAsGA1UECxMETm9uZTEUMBIGA1UEChMLTm9uZSBMPU5vbmUxDTAL\n"
-            + "BgNVBAYTBE5vbmUwHhcNMTUxMDA0MDAyNjMyWhcNMjUxMDMxMDAyNjMyWjBHMREw\n"
-            + "DwYDVQQDEwhjYXJlLmNvbTENMAsGA1UECxMETm9uZTEUMBIGA1UEChMLTm9uZSBM\n"
-            + "PU5vbmUxDTALBgNVBAYTBE5vbmUwgZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJAoGB\n"
-            + "AIBzx6MggSa+WXPOMjAisj/BqARDQgE/PPem3GkfoderDBKARdr4ImcNAIWilN65\n"
-            + "vi0ePLS/L6pCXXXDKsmNRvrbkDktrRtQ+iOBB0IKYvILXovcEGTpSFClGnKKULP4\n"
-            + "8rSu5pH1pJGQpBa+p5RYZhdo5+f5N+2PG7SSTeSlQhkHAgMBAAEwDQYJKoZIhvcN\n"
-            + "AQEEBQADgYEAMBbuVdHSEc3YV59XKJWWJ3rA+ZiuPBNAeacRrn2OJf1+TSZpMZ20\n"
-            + "Dh1IeF3cL+xlSi0xKOIKaYCFTlEy61ylOr7gL9Lj2rmsIuKi8joD/6pz/mkpILrv\n"
-            + "dIRWPx/3n8OoV75UBe2KtU5Br2eQbr3/TLiUSyZuWnjcd/oQ1gX1BlA=\n"
-            + "-----END CERTIFICATE-----\n";
-
-        var x509 = new X509();
-        x509.readCertPEM(pem);
-
-        //header.body
-        var sMsg = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJTSEEyNTZ3aXRoUlNBIiwieDV0IjoiTkdVMk1EZGpNV1k1WXpSaU1tVXlZamRtTXprelpHTXlORFV3TVRVMk5Ua3pPREF3TnpBd1pRIn0.eyJpc3MiOiJodHRwOi8vd3NvMi5vcmcvZ2F0ZXdheSIsImV4cCI6MTQ0OTE5ODE2MTUwMSwiaHR0cDovL3dzbzIub3JnL2dhdGV3YXkvc3Vic2NyaWJlciI6ImFkbWluIiwiaHR0cDovL3dzbzIub3JnL2dhdGV3YXkvYXBwbGljYXRpb25uYW1lIjoiY2FyZSIsImh0dHA6Ly93c28yLm9yZy9nYXRld2F5L2VuZHVzZXIiOiJhZG1pbkBjYXJlLmNvbSIsICJodHRwOi8vd3NvMi5vcmcvY2xhaW1zL2VtYWlsYWRkcmVzcyI6ImFkbWluQGNhcmUuY29tIiwgImh0dHA6Ly93c28yLm9yZy9jbGFpbXMvZ2l2ZW5uYW1lIjoiYWRtaW4iLCAiaHR0cDovL3dzbzIub3JnL2NsYWltcy9sYXN0bmFtZSI6ImFkbWluIiwgImh0dHA6Ly93c28yLm9yZy9jbGFpbXMvcm9sZSI6ImFkbWluLEludGVybmFsL2NhcmUsSW50ZXJuYWwvYWRtaW5fRGVmYXVsdEFwcGxpY2F0aW9uX1BST0RVQ1RJT04sSW50ZXJuYWwvYWRtaW5fQ2FyZV9QUk9EVUNUSU9OLEludGVybmFsL2V2ZXJ5b25lIn0';
-        //hex signature string
-        var hSig = '7524eb900e2d439de23feabb6ddefb12cdb577e3aca86d2e5aa629d36c869671d504f25fc138bda96e0d8ad8c7dbad165881a73b018a6228ae136670e9867fcf173f0c98887f751ccd04fbb457cbbeeb102faf5bd6cce9a52c074c5b933288f1f6517fb4d1279747fe94b5b72110d32bd23fe0d1a525b5d3831f9b90088b64aa';
-
-        var isValid = x509.subjectPublicKeyRSA.verifyString(sMsg, hSig);
-        expect(isValid).toEqual(true);
-
-        expect(IdToken.verifyIdTokenSignatureByX509(wsoIdToken, pem)).toEqual(true);
-
-      });
-  });
-
-
 });

@@ -1,4 +1,4 @@
-/* oauth-ng - v0.4.5 - 2016-03-18 */
+/* oauth-ng - v0.4.5 - 2016-03-23 */
 
 'use strict';
 
@@ -212,27 +212,16 @@ idTokenService.factory('IdToken', ['Storage', function(Storage) {
           }
         }
 
-        //TODO: nonce support ? probably need to redo current nonce support
-        //if(payload['nonce'] != sessionStorage['nonce'])
-        //  throw new OidcException('invalid nonce');
+        var expectedNonce = Storage.get('nonce');
+        Storage.delete('nonce'); //Delete existing nonce, it's one time use only
+        if (payload.nonce !== expectedNonce)
+          throw new OidcException('invalid nonce');
+
         valid = true;
       } else
         throw new OidcException('Unable to parse JWS payload');
     }
     return valid;
-  };
-
-  service.verifyIdTokenSignatureByX509 = function (idToken, x509String) {
-    var x509 = new X509();
-    x509.readCertPEM(x509String);
-    var idParts = idToken.match(/^([^.]+)\.([^.]+)\.([^.]+)$/);
-    var b64sig = null;
-    if (idParts[3].indexOf("-") > -1 || idParts[3].indexOf("_") > -1) { // Base64URL encoding
-      b64sig = idParts[3].replace(/[-]/g, '+').replace(/[_]/g, '/');
-    } else {
-      b64sig = idParts[3];
-    }
-    return x509.subjectPublicKeyRSA.verifyString(idParts[1]+'.'+idParts[2], b64tohex(b64sig));
   };
 
   /**
@@ -351,7 +340,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
    */
   service.destroy = function(){
     //TODO find a better and comprehensive way of dealing with SLO(single logout)
-    if (this.config.revokePath) {
+    if (this.config && this.config.revokePath) {
       var params = 'clientID=' + encodeURIComponent(this.config.clientId) + '&accessToken=' + encodeURIComponent(this.token.access_token);
       var auth = this;
       //TODO circular dependency injection of $http ?
@@ -366,7 +355,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
     }
 
     Storage.delete('token');
-    auth.token = null;
+    this.token = null;
     return null;
   };
 
@@ -512,7 +501,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
 
 var endpointClient = angular.module('oauth.endpoint', []);
 
-endpointClient.factory('Endpoint', function() {
+endpointClient.factory('Endpoint', ['Storage', function(Storage) {
 
   var service = {};
 
@@ -556,12 +545,43 @@ endpointClient.factory('Endpoint', function() {
    */
 
   service.redirect = function( overrides ) {
+    overrides = overrides || {};
+    if (this.config.nonce) {
+      var nonce = generateNonce();
+      Storage.set('nonce', nonce);
+      overrides.nonce = nonce;
+    }
     var targetLocation = this.get( overrides );
     window.location.replace(targetLocation);
   };
 
+
+  var generateNonce = function() {
+    var crypto = window.crypto || window.msCrypto;
+    //crypto.getRandomValues should be well supported nowadays, based on http://caniuse.com/#feat=getrandomvalues
+    if (crypto && crypto.getRandomValues) {
+      var array = new Uint32Array(1);
+      crypto.getRandomValues(array);
+      return array[0].toString(36);
+    } else {
+      var byteArrayToLong = function(byteArray) {
+        var value = 0;
+        for (var i = byteArray.length - 1; i >= 0; i--) {
+          value = (value * 256) + byteArray[i];
+        }
+        return value;
+      };
+      var randArray= new Array(4);
+
+      rng_seed_time();
+      new SecureRandom().nextBytes(randArray);
+      return byteArrayToLong(randArray).toString(36);
+    }
+  };
+
+
   return service;
-});
+}]);
 
 'use strict';
 
@@ -651,12 +671,12 @@ var oauthConfigurationService = angular.module('oauth.configuration', []);
 
 oauthConfigurationService.provider('OAuthConfiguration', function() {
 	var _config = {};
-	
+
 	this.init = function(config, httpProvider) {
 		_config.protectedResources = config.protectedResources || [];
 		httpProvider.interceptors.push('AuthInterceptor');
 	};
-	
+
 	this.$get = function() {
 		return {
 			getConfig: function() {
@@ -665,24 +685,25 @@ oauthConfigurationService.provider('OAuthConfiguration', function() {
 		};
 	};
 })
-.factory('AuthInterceptor', ['OAuthConfiguration', 'AccessToken', function(OAuthConfiguration, AccessToken) {
+.factory('AuthInterceptor', ['OAuthConfiguration', 'Storage', function(OAuthConfiguration, Storage) {
 	return {
 		'request': function(config) {
 			OAuthConfiguration.getConfig().protectedResources.forEach(function(resource) {
 				// If the url is one of the protected resources, we want to see if there's a token and then
 				// add the token if it exists.
 				if (config.url.indexOf(resource) > -1) {
-					var token = AccessToken.get();
+					var token = Storage.get('token');
 					if (token) {
 						config.headers.Authorization = 'Bearer ' + token.access_token;
 					}
 				}
 			});
-			
+
 			return config;
 		}
 	};
 }]);
+
 'use strict';
 
 var interceptorService = angular.module('oauth.interceptor', []);
@@ -785,7 +806,7 @@ directives.directive('oauth', [
         scope.state         = scope.state         || undefined;
         scope.scope         = scope.scope         || undefined;
         scope.storage       = scope.storage       || 'sessionStorage';
-        scope.nonce         = scope.nonce         || 'k9699'; //TODO make this random 5 digits
+        scope.nonce         = scope.nonce         || true; //use nonce or not. If true(by default) then random nonce generation and validation will be taken care by oauth-ng
       };
 
       var compile = function() {
