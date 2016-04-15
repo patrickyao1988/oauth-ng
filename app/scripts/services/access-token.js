@@ -61,7 +61,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
       var params = 'clientID=' + encodeURIComponent(this.config.clientId) + '&accessToken=' + encodeURIComponent(this.token.access_token);
       var auth = this;
       //TODO circular dependency injection of $http ?
-      $http.post(auth.config.site + auth.config.revokePath, params, {headers: { 'Content-Type': 'application/x-www-form-urlencoded'}})
+      $http.post(auth.config.site + auth.config.revokePath, params, {withCredentials: true, headers: {'Content-Type': 'application/x-www-form-urlencoded'}})
           .success(function(status){
             if (auth.config.logoutPath) {
               window.location.replace(auth.config.site + auth.config.logoutPath);
