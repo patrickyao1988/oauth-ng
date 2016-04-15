@@ -2,9 +2,11 @@
 
 var accessTokenService = angular.module('oauth.accessToken', []);
 
-accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location', '$interval', 'IdToken', function(Storage, $rootScope, $location, $interval, IdToken){
+accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location', '$interval', '$http', 'IdToken',
+  function(Storage, $rootScope, $location, $interval, $http, IdToken){
 
   var service = {
+    config: null,
     token: null
   },
   hashFragmentKeys = [
@@ -27,8 +29,19 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
    * - takes the token from the fragment URI
    * - takes the token from the sessionStorage
    */
-  service.set = function(){
-    this.setTokenFromString($location.hash());
+  service.set = function(scope){
+    this.config = scope || {};
+    var hash = null;
+
+    //In case we're using ui-router or other modules that can scramble the hash and path
+    if ($location.path().indexOf('access_token') > -1) {
+      hash = $location.path().substring(1);
+    }
+    if (!hash) {
+      hash = $location.hash()
+    }
+
+    this.setTokenFromString(hash);
 
     //If hash is present in URL always use it, cuz its coming from oAuth2 provider redirect
     if(null === service.token){
@@ -43,9 +56,24 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
    * @returns {null}
    */
   service.destroy = function(){
+    //TODO find a better and comprehensive way of dealing with SLO(single logout)
+    if (this.config && this.config.revokePath) {
+      var params = 'clientID=' + encodeURIComponent(this.config.clientId) + '&accessToken=' + encodeURIComponent(this.token.access_token);
+      var auth = this;
+      //TODO circular dependency injection of $http ?
+      $http.post(auth.config.site + auth.config.revokePath, params, {withCredentials: true, headers: {'Content-Type': 'application/x-www-form-urlencoded'}})
+          .success(function(status){
+            if (auth.config.logoutPath) {
+              window.location.replace(auth.config.site + auth.config.logoutPath);
+            }
+          }).error(function(data){
+            console.log(data);
+          });
+    }
+
     Storage.delete('token');
     this.token = null;
-    return this.token;
+    return null;
   };
 
   /**

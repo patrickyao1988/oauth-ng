@@ -1,4 +1,4 @@
-/* oauth-ng - v0.4.4 - 2015-12-12 */
+/* oauth-ng - v0.4.5 - 2016-03-23 */
 
 'use strict';
 
@@ -212,9 +212,11 @@ idTokenService.factory('IdToken', ['Storage', function(Storage) {
           }
         }
 
-        //TODO: nonce support ? probably need to redo current nonce support
-        //if(payload['nonce'] != sessionStorage['nonce'])
-        //  throw new OidcException('invalid nonce');
+        var expectedNonce = Storage.get('nonce');
+        Storage.delete('nonce'); //Delete existing nonce, it's one time use only
+        if (payload.nonce !== expectedNonce)
+          throw new OidcException('invalid nonce');
+
         valid = true;
       } else
         throw new OidcException('Unable to parse JWS payload');
@@ -283,9 +285,11 @@ idTokenService.factory('IdToken', ['Storage', function(Storage) {
 
 var accessTokenService = angular.module('oauth.accessToken', []);
 
-accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location', '$interval', 'IdToken', function(Storage, $rootScope, $location, $interval, IdToken){
+accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location', '$interval', '$http', 'IdToken',
+  function(Storage, $rootScope, $location, $interval, $http, IdToken){
 
   var service = {
+    config: null,
     token: null
   },
   hashFragmentKeys = [
@@ -308,8 +312,19 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
    * - takes the token from the fragment URI
    * - takes the token from the sessionStorage
    */
-  service.set = function(){
-    this.setTokenFromString($location.hash());
+  service.set = function(scope){
+    this.config = scope || {};
+    var hash = null;
+
+    //In case we're using ui-router or other modules that can scramble the hash and path
+    if ($location.path().indexOf('access_token') > -1) {
+      hash = $location.path().substring(1);
+    }
+    if (!hash) {
+      hash = $location.hash()
+    }
+
+    this.setTokenFromString(hash);
 
     //If hash is present in URL always use it, cuz its coming from oAuth2 provider redirect
     if(null === service.token){
@@ -324,9 +339,24 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
    * @returns {null}
    */
   service.destroy = function(){
+    //TODO find a better and comprehensive way of dealing with SLO(single logout)
+    if (this.config && this.config.revokePath) {
+      var params = 'clientID=' + encodeURIComponent(this.config.clientId) + '&accessToken=' + encodeURIComponent(this.token.access_token);
+      var auth = this;
+      //TODO circular dependency injection of $http ?
+      $http.post(auth.config.site + auth.config.revokePath, params, {headers: { 'Content-Type': 'application/x-www-form-urlencoded'}})
+          .success(function(status){
+            if (auth.config.logoutPath) {
+              window.location.replace(auth.config.site + auth.config.logoutPath);
+            }
+          }).error(function(data){
+            console.log(data);
+          });
+    }
+
     Storage.delete('token');
     this.token = null;
-    return this.token;
+    return null;
   };
 
   /**
@@ -471,7 +501,7 @@ accessTokenService.factory('AccessToken', ['Storage', '$rootScope', '$location',
 
 var endpointClient = angular.module('oauth.endpoint', []);
 
-endpointClient.factory('Endpoint', function() {
+endpointClient.factory('Endpoint', ['Storage', function(Storage) {
 
   var service = {};
 
@@ -515,12 +545,43 @@ endpointClient.factory('Endpoint', function() {
    */
 
   service.redirect = function( overrides ) {
+    overrides = overrides || {};
+    if (this.config.nonce) {
+      var nonce = generateNonce();
+      Storage.set('nonce', nonce);
+      overrides.nonce = nonce;
+    }
     var targetLocation = this.get( overrides );
     window.location.replace(targetLocation);
   };
 
+
+  var generateNonce = function() {
+    var crypto = window.crypto || window.msCrypto;
+    //crypto.getRandomValues should be well supported nowadays, based on http://caniuse.com/#feat=getrandomvalues
+    if (crypto && crypto.getRandomValues) {
+      var array = new Uint32Array(1);
+      crypto.getRandomValues(array);
+      return array[0].toString(36);
+    } else {
+      var byteArrayToLong = function(byteArray) {
+        var value = 0;
+        for (var i = byteArray.length - 1; i >= 0; i--) {
+          value = (value * 256) + byteArray[i];
+        }
+        return value;
+      };
+      var randArray= new Array(4);
+
+      rng_seed_time();
+      new SecureRandom().nextBytes(randArray);
+      return byteArrayToLong(randArray).toString(36);
+    }
+  };
+
+
   return service;
-});
+}]);
 
 'use strict';
 
@@ -610,12 +671,12 @@ var oauthConfigurationService = angular.module('oauth.configuration', []);
 
 oauthConfigurationService.provider('OAuthConfiguration', function() {
 	var _config = {};
-	
+
 	this.init = function(config, httpProvider) {
 		_config.protectedResources = config.protectedResources || [];
 		httpProvider.interceptors.push('AuthInterceptor');
 	};
-	
+
 	this.$get = function() {
 		return {
 			getConfig: function() {
@@ -624,24 +685,25 @@ oauthConfigurationService.provider('OAuthConfiguration', function() {
 		};
 	};
 })
-.factory('AuthInterceptor', ['OAuthConfiguration', 'AccessToken', function(OAuthConfiguration, AccessToken) {
+.factory('AuthInterceptor', ['OAuthConfiguration', 'Storage', function(OAuthConfiguration, Storage) {
 	return {
 		'request': function(config) {
 			OAuthConfiguration.getConfig().protectedResources.forEach(function(resource) {
 				// If the url is one of the protected resources, we want to see if there's a token and then
 				// add the token if it exists.
 				if (config.url.indexOf(resource) > -1) {
-					var token = AccessToken.get();
+					var token = Storage.get('token');
 					if (token) {
 						config.headers.Authorization = 'Bearer ' + token.access_token;
 					}
 				}
 			});
-			
+
 			return config;
 		}
 	};
 }]);
+
 'use strict';
 
 var interceptorService = angular.module('oauth.interceptor', []);
@@ -653,8 +715,12 @@ interceptorService.factory('ExpiredInterceptor', ['Storage', '$rootScope', funct
   service.request = function(config) {
     var token = Storage.get('token');
 
-    if (token && expired(token)) {
-      $rootScope.$broadcast('oauth:expired', token);
+    if (token) {
+      if (expired(token)) {
+        $rootScope.$broadcast('oauth:expired', token);
+      } else { // TODO: Do we want to attach the token to every request ? or use the protected resource config ?
+        config.headers.Authorization = 'Bearer ' + token.access_token;
+      }
     }
 
     return config;
@@ -697,6 +763,8 @@ directives.directive('oauth', [
         template: '@',      // (optional) template to render (e.g bower_components/oauth-ng/dist/views/templates/default.html)
         text: '@',          // (optional) login text
         authorizePath: '@', // (optional) authorization url
+        revokePath: '@',    // (optional) revoke token path
+        logoutPath: '@',    // (optional) logout path
         state: '@',         // (optional) An arbitrary unique string created by your app to guard against Cross-site Request Forgery
         storage: '@',        // (optional) Store token in 'sessionStorage' or 'localStorage', defaults to 'sessionStorage'
         nonce: '@',          // (optional) Send nonce on auth request
@@ -717,7 +785,9 @@ directives.directive('oauth', [
       var init = function() {
         initAttributes();          // sets defaults
         Storage.use(scope.storage);// set storage
-        compile();                 // compiles the desired layout
+        if (scope.template) {
+          compile();                 // compiles the desired layout
+        }
         Endpoint.set(scope);       // sets the oauth authorization url
         IdToken.set(scope);
         AccessToken.set(scope);    // sets the access token object (if existing, from fragment or session)
@@ -728,12 +798,15 @@ directives.directive('oauth', [
       var initAttributes = function() {
         scope.authorizePath = scope.authorizePath || '/oauth/authorize';
         scope.tokenPath     = scope.tokenPath     || '/oauth/token';
-        scope.template      = scope.template      || 'bower_components/oauth-ng/dist/views/templates/default.html';
-        scope.responseType  = scope.responseType  || 'token';
+        scope.revokePath    = scope.revokePath    || undefined;
+        scope.logoutPath    = scope.logoutPath    || undefined;
+        scope.template      = scope.template      || undefined; // was default to 'bower_components/oauth-ng/dist/views/templates/default.html';
+        scope.responseType  = scope.responseType  || 'id_token token';
         scope.text          = scope.text          || 'Sign In';
         scope.state         = scope.state         || undefined;
         scope.scope         = scope.scope         || undefined;
         scope.storage       = scope.storage       || 'sessionStorage';
+        scope.nonce         = scope.nonce         || true; //use nonce or not. If true(by default) then random nonce generation and validation will be taken care by oauth-ng
       };
 
       var compile = function() {

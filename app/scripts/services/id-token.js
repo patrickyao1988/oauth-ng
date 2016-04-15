@@ -192,9 +192,11 @@ idTokenService.factory('IdToken', ['Storage', function(Storage) {
           }
         }
 
-        //TODO: nonce support ? probably need to redo current nonce support
-        //if(payload['nonce'] != sessionStorage['nonce'])
-        //  throw new OidcException('invalid nonce');
+        var expectedNonce = Storage.get('nonce');
+        Storage.delete('nonce'); //Delete existing nonce, it's one time use only
+        if (payload.nonce !== expectedNonce)
+          throw new OidcException('invalid nonce');
+
         valid = true;
       } else
         throw new OidcException('Unable to parse JWS payload');

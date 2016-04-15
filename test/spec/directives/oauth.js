@@ -27,6 +27,7 @@ describe('oauth', function() {
           'client="client-id"' +
           'redirect="http://example.com/redirect"' +
           'scope="scope"' +
+          'template="views/templates/default.html"' +
           'profile-uri="http://example.com/me">Sign In</oauth>' +
       '</span>'
     );
